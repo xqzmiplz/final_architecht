@@ -1,0 +1,180 @@
+version: '3.8'
+
+services:
+  app:
+    build: .
+    container_name: todo_app
+    ports:
+      - "8080:8080"
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=todo_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - KEYDB_HOST=keydb
+      - KEYDB_PORT=6379
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+    depends_on:
+      db:
+        condition: service_healthy
+      keydb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+
+  consumer:
+    build: .
+    container_name: todo_consumer
+    environment:
+      - DB_HOST=db
+      - DB_PORT=5432
+      - DB_NAME=todo_db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - KEYDB_HOST=keydb
+      - KEYDB_PORT=6379
+      - RABBITMQ_HOST=rabbitmq
+      - RABBITMQ_USER=guest
+      - RABBITMQ_PASSWORD=guest
+    depends_on:
+      db:
+        condition: service_healthy
+      keydb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command: ["sh", "-c", "python -m app.consumer || tail -f /dev/null"]
+
+  db:
+    image: postgres:13-alpine
+    container_name: postgres_db
+    ports:
+      - "5432:5432"
+    environment:
+      LANG: en_US.utf8
+      LC_ALL: en_US.utf8
+      POSTGRES_DB: todo_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d todo_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  keydb:
+    build:
+      context: .
+      dockerfile: Dockerfile.keydb
+    container_name: keydb
+    ports:
+      - "6379:6379"
+    volumes:
+      - keydb_data:/data
+    environment:
+      - LANG=C.UTF-8
+      - LC_ALL=C.UTF-8
+    healthcheck:
+      test: ["CMD", "keydb-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  rabbitmq:
+    image: rabbitmq:3.13-management
+    container_name: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "check_port_connectivity"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+
+  prometheus:
+    image: prom/prometheus:latest
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+      - ./alerts.yml:/etc/prometheus/alerts.yml
+    ports:
+      - "9090:9090"
+    depends_on:
+      - app
+      - postgres-exporter
+      - redis-exporter
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - ./grafana/provisioning:/etc/grafana/provisioning
+    depends_on:
+      - prometheus
+
+  alertmanager:
+    image: prom/alertmanager:v0.26.0
+    container_name: alertmanager
+    ports:
+      - "9093:9093"
+    volumes:
+      - ./alertmanager.yml:/etc/alertmanager/alertmanager.yml
+    depends_on:
+      - alert-logger
+
+  alert-logger:
+    build:
+      context: .
+      dockerfile: Dockerfile.alert-logger
+    container_name: alert_logger
+    ports:
+      - "9094:9094"
+    volumes:
+      - ./alerts:/app/alerts
+    environment:
+      - ALERT_LOG_FILE=/app/alerts/alerts.log
+
+  postgres-exporter:
+    image: prometheuscommunity/postgres-exporter:latest
+    container_name: postgres-exporter
+    environment:
+      - DATA_SOURCE_NAME=postgresql://postgres:postgres@db:5432/todo_db?sslmode=disable
+    ports:
+      - "9187:9187"
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./postgres_exporter.yml:/postgres_exporter.yml
+
+  redis-exporter:
+    image: oliver006/redis_exporter:latest
+    container_name: redis-exporter
+    environment:
+      - REDIS_ADDR=keydb:6379
+    ports:
+      - "9121:9121"
+    depends_on:
+      keydb:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  keydb_data:
+  grafana_data:
+  alerts:  # Новый том для alerts.log

@@ -1,0 +1,34 @@
+groups:
+- name: todo_app_alerts
+  rules:
+  - alert: HighRequestRate
+    expr: rate(todo_app_requests_total[1m]) > 5
+    for: 10s
+    labels:
+      severity: warning
+      group: BSBO-01-20
+      number: 15
+    annotations:
+      summary: "High request rate detected"
+      description: "Request rate is above 5 requests per second for 60 seconds."
+
+  - alert: TooManyTasks
+    expr: todo_app_active_tasks > 10
+    labels:
+      severity: critical
+      group: BSBO-01-20
+      number: 15
+    annotations:
+      summary: "Too many active tasks"
+      description: "Number of active tasks exceeds 10."
+
+  - alert: PostgresHighTransactionRate
+    expr: rate(pg_stat_database_xact_commit[5m]) > 50
+    for: 5m
+    labels:
+      severity: warning
+      group: BSBO-01-20
+      number: 15
+    annotations:
+      summary: "High Postgres transaction rate"
+      description: "Postgres transaction commit rate exceeds 50 per second for 5 minutes."

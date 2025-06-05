@@ -1,0 +1,6 @@
+FROM eqalpha/keydb:latest
+
+COPY init_keydb.sh /init_keydb.sh
+RUN chmod +x /init_keydb.sh
+
+CMD ["/init_keydb.sh"]

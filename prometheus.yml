@@ -1,0 +1,36 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+scrape_configs:
+  - job_name: 'todo_app'
+    static_configs:
+      - targets: ['app:8080']
+        labels:
+          group: 'BSBO-01-20'
+          number: '15'
+
+  - job_name: 'postgres'
+    static_configs:
+      - targets: ['postgres-exporter:9187']
+        labels:
+          group: 'BSBO-01-20'
+          number: '15'
+
+  - job_name: 'redis'
+    static_configs:
+      - targets: ['redis-exporter:9121']
+        labels:
+          group: 'BSBO-01-20'
+          number: '15'
+  - job_name: 'rabbitmq'
+    static_configs:
+      - targets: ['rabbitmq-exporter:9419']
+      
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: ['alertmanager:9093']
